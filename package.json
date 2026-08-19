@@ -1,0 +1,70 @@
+{
+  "name": "threevscode",
+  "displayName": "ThreeVSCode",
+  "description": "A 3D character that lives in your editor and speaks summaries of what Claude Code just did.",
+  "version": "0.2.16",
+  "license": "UNLICENSED",
+  "publisher": "embody",
+  "icon": "assets/ThreeVSLogo1024.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "threeVSCode.open",
+        "title": "ThreeVSCode: Open Character"
+      },
+      {
+        "command": "threeVSCode.enableVoice",
+        "title": "ThreeVSCode: Enable Voice for Claude Code"
+      },
+      {
+        "command": "threeVSCode.toggleVoice",
+        "title": "ThreeVSCode: Toggle Voice"
+      },
+      {
+        "command": "threeVSCode.restartClaudeTerminal",
+        "title": "ThreeVSCode: Restart Claude Terminal"
+      }
+    ],
+    "configuration": {
+      "title": "ThreeVSCode",
+      "properties": {
+        "threeVSCode.voiceEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Speak Claude Code's responses through the character. Turn off to keep the hook installed but silence it."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "vscode:prepublish": "node esbuild.js --production"
+  },
+  "dependencies": {
+    "kokoro-js": "^1.2.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/three": "^0.185.4",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.6.3"
+  }
+}
