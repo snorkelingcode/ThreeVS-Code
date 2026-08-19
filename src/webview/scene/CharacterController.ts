@@ -43,32 +43,24 @@ export class CharacterController {
   private readonly visorGain = 3.5;
   usingPlaceholder = false;
 
-  // Mouse-tracking look target, eased toward each frame.
-  private lookTargetX = 0;
-  private lookTargetY = 0;
   private lookCurrentX = 0;
   private lookCurrentY = 0;
   private readonly maxYaw = THREE.MathUtils.degToRad(32);
   private readonly maxPitch = THREE.MathUtils.degToRad(18);
   private readonly headRestWorld = new THREE.Quaternion();
 
-  // Whenever there's no real cursor to track — including before the user has
-  // moved the mouse at all, since a mouseenter/mousemove may never fire if
-  // the cursor was already over the page on load — the head "looks around"
-  // on its own: a continuous drift made of two summed sine waves per axis
-  // (different frequencies so it doesn't look like a metronome), rather than
-  // discrete "pick a point, tween to it, hold still" steps. Occasionally the
-  // drift itself pauses for a beat before continuing, so it reads as a
-  // deliberate glance-and-hold rather than a machine that never stops moving.
-  private mouseActive = false;
+  // The head "looks around" on its own: a continuous drift made of two
+  // summed sine waves per axis (different frequencies so it doesn't look
+  // like a metronome), rather than discrete "pick a point, tween to it, hold
+  // still" steps. Occasionally the drift itself pauses for a beat before
+  // continuing, so it reads as a deliberate glance-and-hold rather than a
+  // machine that never stops moving.
   private autonomousClock = 0;
   private autonomousSeedX = Math.random() * Math.PI * 2;
   private autonomousSeedY = Math.random() * Math.PI * 2;
-  private autonomousBlendStartX = 0;
-  private autonomousBlendStartY = 0;
   private autonomousPauseRemaining = 0;
   private autonomousPauseCheckIn = 3 + Math.random() * 3;
-  private static readonly AUTONOMOUS_BLEND_IN = 1.2; // seconds to hand off from the last tracked position
+  private static readonly AUTONOMOUS_BLEND_IN = 1.2; // seconds to ease in from rest at startup
   private static readonly AUTONOMOUS_PAUSE_CHANCE = 0.25;
 
   // Breathing idle animation (subtle spine sine-wave tilt).
@@ -269,28 +261,6 @@ export class CharacterController {
     );
   }
 
-  /** Normalized mouse position in [-1, 1], updated on every mousemove. */
-  setLookTarget(nx: number, ny: number): void {
-    this.lookTargetX = THREE.MathUtils.clamp(nx, -1, 1);
-    this.lookTargetY = THREE.MathUtils.clamp(ny, -1, 1);
-  }
-
-  /** Call on mouseenter/mouseleave of the window/document, and on the first real mousemove. */
-  setMouseActive(active: boolean): void {
-    if (this.mouseActive === active) return;
-    this.mouseActive = active;
-    if (!active) {
-      this.autonomousBlendStartX = this.lookCurrentX;
-      this.autonomousBlendStartY = this.lookCurrentY;
-      this.autonomousSeedX = Math.random() * Math.PI * 2;
-      this.autonomousSeedY = Math.random() * Math.PI * 2;
-      this.autonomousClock = 0;
-      this.autonomousPauseRemaining = 0;
-      // Give the blend-in time to finish before the first pause can trigger.
-      this.autonomousPauseCheckIn = CharacterController.AUTONOMOUS_BLEND_IN + 2 + Math.random() * 3;
-    }
-  }
-
   /** Debug-only (see BoneDebugPanel): when on, procedural animation is skipped in favor of slider-driven poses. */
   setManualPoseMode(active: boolean): void {
     this.manualPoseMode = active;
@@ -365,53 +335,43 @@ export class CharacterController {
   }
 
   /**
-   * Eases the head bone toward the current look target every frame. While
-   * the mouse is over the window, that's a plain exponential ease toward the
-   * continuously-updated cursor position. While the mouse is away, the head
-   * instead follows a sine-wave drift — two sine waves of different
-   * frequency summed per axis, so it wanders without repeating like a
-   * metronome — which occasionally pauses for a beat (25% chance every few
-   * seconds) before continuing, so it reads as alive rather than mechanical.
+   * Eases the head bone through a slow autonomous drift — two sine waves of
+   * different frequency summed per axis, so it wanders without repeating
+   * like a metronome — which occasionally pauses for a beat (25% chance
+   * every few seconds) before continuing, so it reads as alive rather than
+   * mechanical. Blends in from the neutral rest pose over the first
+   * AUTONOMOUS_BLEND_IN seconds after load, rather than snapping straight to
+   * a mid-drift position at startup.
    */
   updateHeadLook(delta: number): void {
     if (!this.headBone) return;
 
-    if (this.mouseActive) {
-      const smoothing = 1 - Math.pow(0.001, delta);
-      this.lookCurrentX += (this.lookTargetX - this.lookCurrentX) * smoothing;
-      this.lookCurrentY += (this.lookTargetY - this.lookCurrentY) * smoothing;
+    if (this.autonomousPauseRemaining > 0) {
+      this.autonomousPauseRemaining -= delta;
     } else {
-      if (this.autonomousPauseRemaining > 0) {
-        this.autonomousPauseRemaining -= delta;
-      } else {
-        this.autonomousClock += delta;
-        this.autonomousPauseCheckIn -= delta;
-        if (this.autonomousPauseCheckIn <= 0) {
-          this.autonomousPauseCheckIn = 4 + Math.random() * 3;
-          if (Math.random() < CharacterController.AUTONOMOUS_PAUSE_CHANCE) {
-            this.autonomousPauseRemaining = 1 + Math.random();
-          }
+      this.autonomousClock += delta;
+      this.autonomousPauseCheckIn -= delta;
+      if (this.autonomousPauseCheckIn <= 0) {
+        this.autonomousPauseCheckIn = 4 + Math.random() * 3;
+        if (Math.random() < CharacterController.AUTONOMOUS_PAUSE_CHANCE) {
+          this.autonomousPauseRemaining = 1 + Math.random();
         }
       }
-
-      // Frozen while paused since these are a pure function of the clock,
-      // which naturally resumes from the same phase with no snap afterward.
-      const driftX =
-        Math.sin(this.autonomousClock * 0.3 + this.autonomousSeedX) * 0.45 +
-        Math.sin(this.autonomousClock * 0.78 + this.autonomousSeedX * 1.7) * 0.2;
-      const driftY =
-        Math.sin(this.autonomousClock * 0.24 + this.autonomousSeedY) * 0.35 +
-        Math.sin(this.autonomousClock * 0.52 + this.autonomousSeedY * 1.3) * 0.18;
-
-      // Blend in from wherever tracking last left off, so losing the cursor
-      // doesn't itself cause a snap — after the blend, drift runs forever.
-      const blend = Math.min(1, this.autonomousClock / CharacterController.AUTONOMOUS_BLEND_IN);
-      const blendEased = 0.5 - 0.5 * Math.cos(blend * Math.PI);
-      this.lookCurrentX = THREE.MathUtils.lerp(this.autonomousBlendStartX, driftX, blendEased);
-      this.lookCurrentY = THREE.MathUtils.lerp(this.autonomousBlendStartY, driftY, blendEased);
-      this.lookTargetX = this.lookCurrentX;
-      this.lookTargetY = this.lookCurrentY;
     }
+
+    // Frozen while paused since these are a pure function of the clock,
+    // which naturally resumes from the same phase with no snap afterward.
+    const driftX =
+      Math.sin(this.autonomousClock * 0.3 + this.autonomousSeedX) * 0.45 +
+      Math.sin(this.autonomousClock * 0.78 + this.autonomousSeedX * 1.7) * 0.2;
+    const driftY =
+      Math.sin(this.autonomousClock * 0.24 + this.autonomousSeedY) * 0.35 +
+      Math.sin(this.autonomousClock * 0.52 + this.autonomousSeedY * 1.3) * 0.18;
+
+    const blend = Math.min(1, this.autonomousClock / CharacterController.AUTONOMOUS_BLEND_IN);
+    const blendEased = 0.5 - 0.5 * Math.cos(blend * Math.PI);
+    this.lookCurrentX = THREE.MathUtils.lerp(0, driftX, blendEased);
+    this.lookCurrentY = THREE.MathUtils.lerp(0, driftY, blendEased);
 
     const yaw = this.lookCurrentX * this.maxYaw;
     const pitch = -this.lookCurrentY * this.maxPitch;
@@ -493,5 +453,15 @@ export class CharacterController {
   /** Sets a material's base color from a `#rrggbb` string (e.g. from a color input). */
   setMaterialColor(name: string, hex: string): void {
     this.materialsByName.get(name)?.color.set(hex);
+  }
+
+  /** Recolors the visor's glow (see updateVisorPulse) — the base color, not the intensity, which stays driven by live speech amplitude. */
+  setVisorColor(hex: string): void {
+    this.visorMaterial?.emissive.set(hex);
+  }
+
+  /** The visor's current glow color as a `#rrggbb` string, for populating a color input. */
+  getVisorColor(): string | null {
+    return this.visorMaterial ? `#${this.visorMaterial.emissive.getHexString()}` : null;
   }
 }

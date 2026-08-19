@@ -32,3 +32,11 @@ export function getMaterialColor(name: string): string {
 export function setMaterialColor(name: string, hex: string): void {
   controller?.setMaterialColor(name, hex);
 }
+
+export function setVisorColor(hex: string): void {
+  controller?.setVisorColor(hex);
+}
+
+export function getVisorColor(): string | null {
+  return controller?.getVisorColor() ?? null;
+}

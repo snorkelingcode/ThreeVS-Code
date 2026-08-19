@@ -10,15 +10,18 @@ WebGPU/WASM; nothing leaves your machine.
 - Opens a **Companion** panel by default, in the main editor area, showing the
   character. Opening a real file works normally alongside it.
 - Auto-launches an integrated terminal running `claude` on first open.
-- Installs a Claude Code `Stop` hook into `~/.claude/settings.json`
-  automatically the first time the extension activates (applies to Claude
-  Code sessions in any project, not just this one) — no manual setup step.
-  A one-time notification confirms it happened.
-- After every Claude Code response, the hook notifies a local bridge server
-  in the extension, which sanitizes the markdown down to plain prose and
-  speaks it through the character.
-- The character isn't static: mouse-tracking head look, idle breathing, arm
-  sway, and a visor glow that pulses with live speech volume.
+- Installs `UserPromptSubmit`/`Stop` hooks into the current project's
+  `.claude/settings.local.json` automatically the first time the extension
+  activates — no manual setup step. A one-time notification confirms it if
+  it can't (e.g. no folder open).
+- Streams Claude Code's responses to the character as they're written, sanitizing
+  the markdown down to plain prose before speaking it.
+- The character isn't static: an autonomous idle head drift, breathing, arm
+  sway, and a visor glow that pulses with live speech volume — recolor it
+  live from the hamburger menu, and the choice is remembered across restarts.
+- Optional quiet background music, coordinated across multiple open VS Code
+  windows so only one plays at a time, and unaffected by switching to another
+  application.
 
 ## Commands
 
@@ -49,7 +52,7 @@ npm run build
 
 Then open this folder in VS Code and press **F5** (or Run → Start Debugging).
 That launches an Extension Development Host window with the Companion panel
-open and a "Click to enable voice" prompt (a one-time click to satisfy the
+open and a "Click to enable audio" prompt (a one-time click to satisfy the
 browser's audio-autoplay restriction).
 
 `npm run watch` rebuilds on save if you're iterating.

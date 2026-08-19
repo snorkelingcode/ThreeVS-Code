@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.2.23
+
+- Added a "Visor" color picker to the Materials section, independent of the silicone rubber
+  "Color" picker (0.2.20's auto-sync between the two has been removed). The visor's glow color
+  now persists separately via `context.globalState`, same as the material color.
+- The two color pickers now track which one is open (`openPicker: "material" | "visor" | null`)
+  instead of a single shared boolean, so opening one doesn't affect the other.
+
+## 0.2.22
+
+- Open-sourced under the MIT license (was `UNLICENSED`) — added a `LICENSE` file.
+- Updated the README: fixed the hook install location (project-scoped
+  `.claude/settings.local.json`, not `~/.claude/settings.json`), removed the stale
+  mouse-tracking mention, and documented music, live material recoloring, and persistence.
+
+## 0.2.21
+
+- Removed mouse-cursor head tracking. The head now always runs its autonomous sine-wave idle
+  drift (with the same occasional pause-and-hold behavior it already had when the cursor was
+  away) instead of following the mouse when it's over the window. Dropped
+  `CharacterController.setLookTarget`/`setMouseActive` and the mousemove/mouseenter/mouseleave
+  listeners in `SceneCanvas.tsx` that drove them.
+
+## 0.2.20
+
+- The visor's speaking-pulse glow now matches the selected silicone rubber color instead of
+  being fixed red. `CharacterController.setVisorColor()` recolors the visor's emissive base
+  color (the pulse's intensity is still driven by live speech amplitude, unchanged) — kept in
+  sync everywhere the material color is set: on initial load, when a saved color is restored,
+  and when picked live from the menu.
+
+## 0.2.19
+
+- Removed the 🔊 emoji from the "Click to enable audio" button.
+- The silicone rubber color now persists: picking a color saves it via `context.globalState`
+  on the extension host (not webview state, which doesn't survive a VS Code restart), and it's
+  re-applied to the character every time the panel loads — across VS Code restarts, computer
+  restarts, and other windows, since globalState is global rather than per-workspace.
+
+## 0.2.18
+
+- Music now keeps playing when you switch away from VS Code entirely (another application,
+  another window), matching how voice already behaves — it's no longer muted based on OS
+  window focus. Replaced the focus-based muting with a persistent cross-window lock
+  (`musicLock.ts`, heartbeat-refreshed while held) that decides which single open VS Code
+  window's music is actually audible: turning music on in a window asks the extension host for
+  ownership, and if another window already holds it, this window polls every 2s until it either
+  wins the lock or is turned back off. Whichever window owns it keeps playing regardless of
+  focus — only another window actively taking over stops it.
+
+## 0.2.17
+
+- Changed the "Click to enable audio" button from cyan to the same grey used for the hamburger
+  toggle and checkboxes.
+
 ## 0.2.16
 
 - Fixed the color picker popup not closing when clicking outside the webview entirely (the

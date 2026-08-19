@@ -1,5 +1,6 @@
 src/**
 .vscode/**
+.claude/**
 node_modules/**
 **/*.map
 esbuild.js

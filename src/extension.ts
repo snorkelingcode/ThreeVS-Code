@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { startBridgeServer, stopBridgeServer } from "./bridgeServer";
 import { registerHookInstaller, ensureVoiceHookInstalled } from "./hookInstaller";
 import { acquireSpeechLock, releaseSpeechLock } from "./speechLock";
+import { tryAcquireMusicLock, releaseMusicLock, ownsMusicLock } from "./musicLock";
 import { stopWatchingAll } from "./transcriptWatcher";
 import type { WebviewToHostMessage } from "./shared/messages";
 
@@ -12,9 +13,23 @@ let bridgePort: number | undefined;
 
 const VOICE_ENABLED_KEY = "voiceEnabled";
 const SPEAK_ACK_TIMEOUT_MS = 30_000;
+const MUSIC_POLL_MS = 2_000;
+// globalState (not workspace state) so a color picked in one project's window
+// still shows up in another — it's the character's appearance, not something
+// project-specific — and it survives VS Code restarts, unlike webview state.
+const MATERIAL_COLOR_KEY = "siliconeRubberColor";
+const VISOR_COLOR_KEY = "visorColor";
 
 let nextSpeakId = 1;
 const pendingSpeakAcks = new Map<number, () => void>();
+
+// The user's desired on/off state, independent of whether this window
+// currently owns the cross-window music lock — toggling on doesn't
+// guarantee immediate playback if another window already owns it, so this
+// drives a poll that keeps trying until either it wins the lock or the user
+// turns music back off.
+let musicWanted = false;
+let musicPollTimer: ReturnType<typeof setInterval> | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   context.subscriptions.push(
@@ -34,17 +49,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (editor && activePanel && editor.viewColumn === activePanel.viewColumn) {
         vscode.commands.executeCommand("workbench.action.moveEditorToRightGroup");
       }
-    }),
-  );
-
-  // Background music has no natural per-utterance lock the way speech does
-  // (see speechLock.ts) — it's continuous, so "only the focused window's
-  // music is audible" is the fix for it playing in every open window at
-  // once. Each window already knows its own OS focus state directly, no
-  // cross-process coordination needed.
-  context.subscriptions.push(
-    vscode.window.onDidChangeWindowState((state) => {
-      activePanel?.webview.postMessage({ type: "windowFocus", focused: state.focused });
     }),
   );
 
@@ -71,6 +75,51 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 export function deactivate(): void {
   stopBridgeServer();
   stopWatchingAll();
+  stopMusicPolling();
+  if (ownsMusicLock()) releaseMusicLock();
+}
+
+function stopMusicPolling(): void {
+  if (musicPollTimer) {
+    clearInterval(musicPollTimer);
+    musicPollTimer = undefined;
+  }
+}
+
+/**
+ * Handles the webview reporting its desired music on/off state. Ownership is
+ * a cross-window lock (see musicLock.ts) rather than anything focus-based —
+ * switching to a different application should leave music playing, exactly
+ * like voice, so turning music on here doesn't guarantee this window gets to
+ * play it immediately; it may have to keep polling until another window
+ * gives the lock up.
+ */
+function handleMusicToggle(panel: vscode.WebviewPanel, enabled: boolean): void {
+  musicWanted = enabled;
+  stopMusicPolling();
+
+  if (!enabled) {
+    if (ownsMusicLock()) releaseMusicLock();
+    panel.webview.postMessage({ type: "musicOwnership", owned: false });
+    return;
+  }
+
+  if (tryAcquireMusicLock()) {
+    panel.webview.postMessage({ type: "musicOwnership", owned: true });
+    return;
+  }
+
+  panel.webview.postMessage({ type: "musicOwnership", owned: false });
+  musicPollTimer = setInterval(() => {
+    if (!musicWanted) {
+      stopMusicPolling();
+      return;
+    }
+    if (tryAcquireMusicLock()) {
+      stopMusicPolling();
+      panel.webview.postMessage({ type: "musicOwnership", owned: true });
+    }
+  }, MUSIC_POLL_MS);
 }
 
 function openCompanionPanel(context: vscode.ExtensionContext): void {
@@ -94,16 +143,28 @@ function openCompanionPanel(context: vscode.ExtensionContext): void {
       // Don't leave anything waiting forever on a panel that's gone.
       for (const resolveAck of pendingSpeakAcks.values()) resolveAck();
       pendingSpeakAcks.clear();
+      stopMusicPolling();
+      musicWanted = false;
+      if (ownsMusicLock()) releaseMusicLock();
     });
     panel.webview.onDidReceiveMessage((message: WebviewToHostMessage) => {
       if (message.type === "ready") {
         panel.webview.postMessage({ type: "voiceState", enabled: isVoiceEnabled() });
-        panel.webview.postMessage({ type: "windowFocus", focused: vscode.window.state.focused });
+        const savedColor = context.globalState.get<string>(MATERIAL_COLOR_KEY);
+        if (savedColor) panel.webview.postMessage({ type: "materialColor", hex: savedColor });
+        const savedVisorColor = context.globalState.get<string>(VISOR_COLOR_KEY);
+        if (savedVisorColor) panel.webview.postMessage({ type: "visorColor", hex: savedVisorColor });
       } else if (message.type === "toggleVoice") {
         toggleVoice();
       } else if (message.type === "speakFinished") {
         pendingSpeakAcks.get(message.id)?.();
         pendingSpeakAcks.delete(message.id);
+      } else if (message.type === "musicToggle") {
+        handleMusicToggle(panel, message.enabled);
+      } else if (message.type === "materialColorChanged") {
+        context.globalState.update(MATERIAL_COLOR_KEY, message.hex);
+      } else if (message.type === "visorColorChanged") {
+        context.globalState.update(VISOR_COLOR_KEY, message.hex);
       }
     });
 

@@ -2,8 +2,8 @@
   "name": "threevscode",
   "displayName": "ThreeVSCode",
   "description": "A 3D character that lives in your editor and speaks summaries of what Claude Code just did.",
-  "version": "0.2.16",
-  "license": "UNLICENSED",
+  "version": "0.2.23",
+  "license": "MIT",
   "publisher": "embody",
   "icon": "assets/ThreeVSLogo1024.png",
   "engines": {
